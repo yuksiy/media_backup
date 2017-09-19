@@ -1,0 +1,210 @@
+==============================================================================
+  media_backup
+  参考手順
+
+  Copyright (c) 2013-2017 Yukio Shiiya
+
+  This software is released under the MIT License.
+  https://opensource.org/licenses/MIT
+==============================================================================
+
+------------------------------------------------------------------------------
+■(必要に応じて) screen の起動
+一般ユーザでログイン
+screen
+
+■ディスクのセット前作業
+WORK_DIR=${HOME}/work/cd,dvd
+SRC_DEV=/dev/sr0 または SRC_DEV=/dev/sr1
+# cdrdao scanbus
+CDRDAO_DEVICE=0,0,0 または CDRDAO_DEVICE=1,0,0
+
+SRC_MNT=${HOME}/tmp/src
+ISO_MNT=${HOME}/tmp/iso
+
+SAMPLE_OFFSET=CD-ROMドライブの読み込みサンプルオフセット値
+
+mkdir -p ${WORK_DIR}
+cd       ${WORK_DIR}
+
+■ディスクのセット
+・PCにバックアップ対象ディスクをセットする。
+
+■ディスク情報の確認
+cd-info --no-cddb --no-device-info --dvd -C ${SRC_DEV}
+
+wodim -prcap dev=${SRC_DEV} | grep -i "read *speed"
+READ_SPEED="" または READ_SPEED="任意の読み取り速度"
+
+■(必要に応じて) 自動マウントされたディスクのマウント解除
+mount
+umount ${SRC_DEV}
+
+■ディスクのセット後作業
+# 通常CDの場合
+CDPARANOIA_OPTIONS="-z -O ${SAMPLE_OFFSET}"
+
+# 読み取りエラーが多いCDの場合
+CDPARANOIA_OPTIONS="-z -O ${SAMPLE_OFFSET} -Z"
+
+# IN_TYPE=cd-da,OUT_FMT=wavの場合
+CDPARANOIA_OPTIONS="${CDPARANOIA_OPTIONS} ${READ_SPEED:+-S ${READ_SPEED}} -w"
+unset CDRDAO_OPTIONS
+unset CDRDAO_DEVICE
+unset READOM_OPTIONS
+unset BCHUNK_OPTIONS
+
+# IN_TYPE=cd-da,OUT_FMT=cue/binの場合、または
+# IN_TYPE=mixed_mode_cd,OUT_FMT=cue/binの場合
+CDPARANOIA_OPTIONS="${CDPARANOIA_OPTIONS} ${READ_SPEED:+-S ${READ_SPEED}} -r"
+CDRDAO_OPTIONS="${READ_SPEED:+--rspeed ${READ_SPEED}}"
+CDRDAO_DEVICE="${CDRDAO_DEVICE}"
+unset READOM_OPTIONS
+BCHUNK_OPTIONS="-w"
+
+# IN_TYPE=cd-rom,OUT_FMT=cue/binの場合
+unset CDPARANOIA_OPTIONS
+CDRDAO_OPTIONS="${READ_SPEED:+--rspeed ${READ_SPEED}}"
+CDRDAO_DEVICE="${CDRDAO_DEVICE}"
+unset READOM_OPTIONS
+BCHUNK_OPTIONS=""
+
+# IN_TYPE=cd-rom,OUT_FMT=isoの場合、または
+# IN_TYPE=dvd-rom,OUT_FMT=isoの場合
+unset CDPARANOIA_OPTIONS
+unset CDRDAO_OPTIONS
+unset CDRDAO_DEVICE
+READOM_OPTIONS="${READ_SPEED:+speed=${READ_SPEED}}"
+unset BCHUNK_OPTIONS
+
+■ディスクのバックアップ
+VOLUME_NAME="任意のボリューム名"
+MEDIA_BACKUP_OPTIONS="-a -l '${VOLUME_NAME}'_media_backup.sh.log -t 10 \
+${CDPARANOIA_OPTIONS:+--cdparanoia-options='${CDPARANOIA_OPTIONS}'} \
+${CDRDAO_OPTIONS:+--cdrdao-options='${CDRDAO_OPTIONS}'} \
+${CDRDAO_DEVICE:+--cdrdao-device='${CDRDAO_DEVICE}'} \
+${READOM_OPTIONS:+--readom-options='${READOM_OPTIONS}'} \
+" ; echo "${MEDIA_BACKUP_OPTIONS}"
+
+(別ウィンドウで実施) VOLUME_NAME="任意のボリューム名"
+(別ウィンドウで実施) >"${VOLUME_NAME}"_media_backup.sh.log
+(別ウィンドウで実施) tail -f "${VOLUME_NAME}"_media_backup.sh.log
+
+# IN_TYPE=cd-da,OUT_FMT=wavの場合
+TRACK_NUM="バックアップ対象トラック番号をスペース区切りで指定"
+eval "media_backup.sh cd-da         wav     ${MEDIA_BACKUP_OPTIONS} ${SRC_DEV} '${VOLUME_NAME}' ${TRACK_NUM}"
+
+# IN_TYPE=cd-da,OUT_FMT=cue/binの場合
+eval "media_backup.sh cd-da         cue/bin ${MEDIA_BACKUP_OPTIONS} ${SRC_DEV} '${VOLUME_NAME}'"
+
+# IN_TYPE=mixed_mode_cd,OUT_FMT=cue/binの場合
+eval "media_backup.sh mixed_mode_cd cue/bin ${MEDIA_BACKUP_OPTIONS} ${SRC_DEV} '${VOLUME_NAME}'"
+
+# IN_TYPE=cd-rom,OUT_FMT=cue/binの場合
+eval "media_backup.sh cd-rom        cue/bin ${MEDIA_BACKUP_OPTIONS} ${SRC_DEV} '${VOLUME_NAME}'"
+
+# IN_TYPE=cd-rom,OUT_FMT=isoの場合
+eval "media_backup.sh cd-rom        iso     ${MEDIA_BACKUP_OPTIONS} ${SRC_DEV} '${VOLUME_NAME}'"
+
+# IN_TYPE=dvd-rom,OUT_FMT=isoの場合
+eval "media_backup.sh dvd-rom       iso     ${MEDIA_BACKUP_OPTIONS} ${SRC_DEV} '${VOLUME_NAME}'"
+
+■ディスクのバックアップログの確認
+# IN_TYPE=cd-da,OUT_FMT=cue/binの場合、または
+# IN_TYPE=mixed_mode_cd,OUT_FMT=cue/binの場合、または
+# IN_TYPE=cd-rom,OUT_FMT=cue/binの場合、または
+# IN_TYPE=cd-rom,OUT_FMT=isoの場合、または
+# IN_TYPE=dvd-rom,OUT_FMT=isoの場合
+cat "${VOLUME_NAME}"_media_backup.sh.log \
+  | grep -i -e '^+ cdrdao' -e 'error'
+
+■(必要に応じて) BINファイルをISOファイル・WAVファイルに分割
+# IN_TYPE=cd-da,OUT_FMT=cue/binの場合、または
+# IN_TYPE=mixed_mode_cd,OUT_FMT=cue/binの場合、または
+# IN_TYPE=cd-rom,OUT_FMT=cue/binの場合
+bchunk ${BCHUNK_OPTIONS} "${VOLUME_NAME}".bin "${VOLUME_NAME}".cue "${VOLUME_NAME}"_
+
+■(必要に応じて) ISOファイルのpostgapを分割
+# IN_TYPE=mixed_mode_cd,OUT_FMT=cue/binの場合、または
+# IN_TYPE=cd-rom,OUT_FMT=cue/binの場合、または
+# IN_TYPE=cd-rom,OUT_FMT=isoの場合、または
+# IN_TYPE=dvd-rom,OUT_FMT=isoの場合
+split_iso_postgap.sh ISOファイル名
+
+■(必要に応じて) ISOファイルの分割したpostgapファイルを削除
+# IN_TYPE=mixed_mode_cd,OUT_FMT=cue/binの場合、または
+# IN_TYPE=cd-rom,OUT_FMT=cue/binの場合、または
+# IN_TYPE=cd-rom,OUT_FMT=isoの場合、または
+# IN_TYPE=dvd-rom,OUT_FMT=isoの場合
+hexdump -Cv postgapファイル名 \
+  | grep -v "00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00"
+rm postgapファイル名
+mv split.isoファイル名 ISOファイル名
+
+■(必要に応じて) ISOファイルの確認
+# IN_TYPE=mixed_mode_cd,OUT_FMT=cue/binの場合、または
+# IN_TYPE=cd-rom,OUT_FMT=cue/binの場合、または
+# IN_TYPE=cd-rom,OUT_FMT=isoの場合、または
+# IN_TYPE=dvd-rom,OUT_FMT=isoの場合
+mkdir -p ${SRC_MNT}
+mkdir -p ${ISO_MNT}
+
+# cygwin以外の場合
+mount
+sudo LANG=C mount -o ro ${SRC_DEV} ${SRC_MNT}
+sudo LANG=C mount -o loop,ro ISOファイル名 ${ISO_MNT}
+mount
+
+# cygwinの場合
+for file in ${VOLUME_NAME}*; do icacls ${file} /reset; done
+mount
+powershell.exe
+Mount-DiskImage -ImagePath "ISOファイル名(フルパス)" -PassThru | Get-Volume
+(DriveLetterが表示された場合)
+  →表示されたDriveLetterを確認。必要に応じてメモ要。
+(DriveLetterが表示されなかった場合)
+  Get-Volume
+    →仮想CD,DVDドライブのDriveLetterを確認。必要に応じてメモ要。
+exit
+LANG=C mount CD,DVDドライブのドライブ名(例：D:) ${SRC_MNT}
+LANG=C mount 上記でメモした仮想CD,DVDドライブのドライブ名(例：E:) ${ISO_MNT}
+mount
+
+#diff -qr ${SRC_MNT} ${ISO_MNT}
+(cd ${SRC_MNT}; find_sort.pl --print0 | xargs -0 -r ls -adl --time-style='+%Y/%m/%d %H:%M:%S') > "${VOLUME_NAME}".src.txt 2>&1
+(cd ${ISO_MNT}; find_sort.pl --print0 | xargs -0 -r ls -adl --time-style='+%Y/%m/%d %H:%M:%S') > "${VOLUME_NAME}".iso.txt 2>&1
+diff -u "${VOLUME_NAME}".src.txt "${VOLUME_NAME}".iso.txt
+md5sum  "${VOLUME_NAME}".src.txt "${VOLUME_NAME}".iso.txt
+view    "${VOLUME_NAME}".src.txt "${VOLUME_NAME}".iso.txt
+rm      "${VOLUME_NAME}".src.txt "${VOLUME_NAME}".iso.txt
+
+# cygwin以外の場合
+mount
+sudo LANG=C umount ${ISO_MNT}
+sudo LANG=C umount ${SRC_MNT}
+mount
+
+# cygwinの場合
+mount
+LANG=C umount ${ISO_MNT}
+LANG=C umount ${SRC_MNT}
+powershell.exe
+Dismount-DiskImage -ImagePath "ISOファイル名(フルパス)"
+exit
+mount
+
+rmdir ${ISO_MNT}
+rmdir ${SRC_MNT}
+
+■(必要に応じて) MD5SUMSファイルの生成
+# IN_TYPE=cd-da,OUT_FMT=cue/binの場合、または
+# IN_TYPE=mixed_mode_cd,OUT_FMT=cue/binの場合、または
+# IN_TYPE=cd-rom,OUT_FMT=cue/binの場合、または
+# IN_TYPE=cd-rom,OUT_FMT=isoの場合、または
+# IN_TYPE=dvd-rom,OUT_FMT=isoの場合
+media_backup_chksum.sh "${VOLUME_NAME}"
+
+■アクセス権の設定
+# cygwinの場合
+for file in ${VOLUME_NAME}*; do icacls ${file} /reset; done
+
